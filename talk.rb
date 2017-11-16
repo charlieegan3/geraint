@@ -1,21 +1,52 @@
 require "aws-sdk"
 require "twitter"
+require "cgi"
 
-text = "drilllllling sounds!"
+def clean_text(tweet)
+  text = tweet.full_text
 
-@polly = Aws::Polly::Client.new(region: "us-east-1")
+  text = text.gsub(/https?\S+$/, "")
 
-@polly.synthesize_speech(
-  response_target: "./tmp/output.mp3",
-  text: text,
-  output_format: "mp3",
-  voice_id: "Geraint"
-)
+  tweet.urls.map(&:url).each do |url|
+    text = text.gsub(url.to_s, ["(a link)", "(a website)", "(some site)", "(some webpage)"].sample)
+  end
 
-system("ffmpeg -i ./tmp/output.mp3 -strict -2 -c:a aac ./tmp/output.m4a")
-system("ffmpeg -i ./tmp/output.m4a -loop 1 -i drill.jpg -c:a copy -c:v libx264 -shortest ./tmp/output.mp4")
+  tweet.media.map(&:url).each do |url|
+    text = text.gsub(url.to_s, ["(a photograph)", "(a photo)", "(some photo)", "(some pic)", "(an image)"].sample)
+  end
 
-video = File.open("./tmp/output.mp4")
+  CGI.unescapeHTML(text).
+    gsub(/^@\S+/, "").
+    gsub("@", " ").
+    gsub(/\s+/, " ").
+    gsub("\"", "'").
+    strip
+end
+
+def talk_tweet(client, tweet)
+  system("rm ./tmp/*")
+
+  text = clean_text(tweet)
+  system("convert -bordercolor white -border 20 -size 400x400 caption:\"#{text}\" ./tmp/image.jpg")
+
+  @polly = Aws::Polly::Client.new(region: "us-east-1")
+
+  @polly.synthesize_speech(
+    response_target: "./tmp/output.mp3",
+    text: text,
+    output_format: "mp3",
+    voice_id: "Geraint"
+  )
+
+  system("ffmpeg -i ./tmp/output.mp3 -strict -2 -c:a aac ./tmp/output.m4a")
+  system("ffmpeg -i ./tmp/output.m4a -loop 1 -i ./tmp/image.jpg -pix_fmt yuv420p -c:a copy -c:v libx264 -shortest ./tmp/output.mp4")
+
+  video = File.open("./tmp/output.mp4")
+
+  client.update_with_media("via #{tweet.user.screen_name}", video)
+
+  system("rm ./tmp/*")
+end
 
 client = Twitter::REST::Client.new do |config|
   config.consumer_key        = ENV.fetch("TWITTER_CONSUMER_KEY")
@@ -24,6 +55,14 @@ client = Twitter::REST::Client.new do |config|
   config.access_token_secret = ENV.fetch("TWITTER_ACCESS_TOKEN_SECRET")
 end
 
-client.update_with_media(text, video)
+# client.user_timeline.each {|t|client.destroy_status(t); puts t }
 
-system("rm ./tmp/*")
+client.favorites.each do |tweet|
+  begin
+    talk_tweet(client, tweet)
+  rescue Exception => e
+    puts "FAILED TO TALK TWEET: #{e} - #{tweet.url} - #{tweet.text}"
+  end
+end
+
+client.unfavorite(client.favorites)

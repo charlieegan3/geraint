@@ -1,0 +1,10 @@
+{
+  "buildpacks": [
+    {
+      "url": "heroku/ruby"
+    },
+    {
+      "url": "https://github.com/giddyio/heroku-buildpack-ffmpeg-latest.git"
+    }
+  ]
+}
