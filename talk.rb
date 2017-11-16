@@ -12,7 +12,7 @@ text = "drilllllling sounds!"
   voice_id: "Geraint"
 )
 
-system("ffmpeg -i ./tmp/output.mp3 -c:a aac ./tmp/output.m4a")
+system("ffmpeg -i ./tmp/output.mp3 -strict -2 -c:a aac ./tmp/output.m4a")
 system("ffmpeg -i ./tmp/output.m4a -loop 1 -i drill.jpg -c:a copy -c:v libx264 -shortest ./tmp/output.mp4")
 
 video = File.open("./tmp/output.mp4")
